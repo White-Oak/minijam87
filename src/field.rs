@@ -20,6 +20,8 @@ const SIZE: f32 = 100.;
 
 pub const NEXT_RING_TIMER_SECS: f32 = 120.;
 
+pub const DEBUG_MODE: bool = false;
+
 #[derive(Debug, Clone, Copy)]
 enum State {
     Inactive,
@@ -80,41 +82,48 @@ fn build_hex_shape() -> shapes::RegularPolygon {
     }
 }
 
+fn spawn_tile(commands: &mut Commands, font_handle: &Handle<Font>, c: Coordinate, tile: State) {
+    let (x, y) = c.to_pixel(Spacing::FlatTop(SIZE));
+    let (x_c, y_c) = (c.x, c.y);
+    let text = Text::with_section(
+        format!("{}, {}", x_c, y_c),
+        TextStyle {
+            font: font_handle.clone(),
+            font_size: 60.0,
+            color: Color::BLACK,
+        },
+        TextAlignment {
+            vertical: VerticalAlign::Center,
+            horizontal: HorizontalAlign::Center,
+        },
+    );
+    let mut builder = commands.spawn();
+    let builder = builder
+        .insert_bundle(GeometryBuilder::build_as(
+            &build_hex_shape(),
+            ShapeColors::outlined(tile.color(), Color::BLACK),
+            DrawMode::Outlined {
+                fill_options: FillOptions::default(),
+                outline_options: StrokeOptions::default().with_line_width(10.0),
+            },
+            Transform::from_xyz(x, y, 0.),
+        ))
+        .insert(c);
+    if DEBUG_MODE {
+        builder.with_children(|ec| {
+            ec.spawn_bundle(Text2dBundle {
+                text,
+                transform: Transform::from_xyz(0., 0., 0.1),
+                ..Text2dBundle::default()
+            });
+        });
+    }
+}
+
 fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>, map: Res<Map>) {
     let font_handle = asset_server.load("FiraSans-Bold.ttf");
     for (c, tile) in map.tiles.iter() {
-        let (x, y) = c.to_pixel(Spacing::FlatTop(SIZE));
-        let (x_c, y_c) = (c.x, c.y);
-        let text = Text::with_section(
-            format!("{}, {}", x_c, y_c),
-            TextStyle {
-                font: font_handle.clone(),
-                font_size: 60.0,
-                color: Color::BLACK,
-            },
-            TextAlignment {
-                vertical: VerticalAlign::Center,
-                horizontal: HorizontalAlign::Center,
-            },
-        );
-        commands
-            .spawn_bundle(GeometryBuilder::build_as(
-                &build_hex_shape(),
-                ShapeColors::outlined(tile.color(), Color::BLACK),
-                DrawMode::Outlined {
-                    fill_options: FillOptions::default(),
-                    outline_options: StrokeOptions::default().with_line_width(10.0),
-                },
-                Transform::from_xyz(x, y, 0.),
-            ))
-            .with_children(|ec| {
-                ec.spawn_bundle(Text2dBundle {
-                    text,
-                    transform: Transform::from_xyz(0., 0., 0.1),
-                    ..Text2dBundle::default()
-                });
-            })
-            .insert(*c);
+        spawn_tile(&mut commands, &font_handle, *c, *tile);
     }
 }
 
@@ -147,38 +156,7 @@ fn generate_next_ring(
     }
     for (c, tile) in next_tiles {
         map.tiles.insert(c, tile);
-        let (x, y) = c.to_pixel(Spacing::FlatTop(SIZE));
-        let (x_c, y_c) = (c.x, c.y);
-        let text = Text::with_section(
-            format!("{}, {}", x_c, y_c),
-            TextStyle {
-                font: font_handle.clone(),
-                font_size: 60.0,
-                color: Color::BLACK,
-            },
-            TextAlignment {
-                vertical: VerticalAlign::Center,
-                horizontal: HorizontalAlign::Center,
-            },
-        );
-        commands
-            .spawn_bundle(GeometryBuilder::build_as(
-                &build_hex_shape(),
-                ShapeColors::outlined(tile.color(), Color::BLACK),
-                DrawMode::Outlined {
-                    fill_options: FillOptions::default(),
-                    outline_options: StrokeOptions::default().with_line_width(10.0),
-                },
-                Transform::from_xyz(x, y, 0.),
-            ))
-            .with_children(|ec| {
-                ec.spawn_bundle(Text2dBundle {
-                    text,
-                    transform: Transform::from_xyz(0., 0., 0.1),
-                    ..Text2dBundle::default()
-                });
-            })
-            .insert(c);
+        spawn_tile(&mut commands, &font_handle, c, tile);
     }
 }
 
