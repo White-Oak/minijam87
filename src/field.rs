@@ -108,7 +108,8 @@ fn spawn_tile(commands: &mut Commands, font_handle: &Handle<Font>, c: Coordinate
             },
             Transform::from_xyz(x, y, 0.),
         ))
-        .insert(c);
+        .insert(c)
+        .insert(SelectableTile);
     if DEBUG_MODE {
         builder.with_children(|ec| {
             ec.spawn_bundle(Text2dBundle {
@@ -191,7 +192,7 @@ struct SelectedHex {
 fn select_hex(
     mut commands: Commands,
     windows: Res<Windows>,
-    tiles: Query<(Entity, &Coordinate)>,
+    tiles: Query<(Entity, &Coordinate), With<SelectableTile>>,
     mut selected_hex: ResMut<Option<SelectedHex>>,
     q_camera: Query<&Transform, With<MainCamera>>,
 ) {
@@ -213,12 +214,13 @@ fn select_hex(
     // apply the camera transform
     let pos_wld = camera_transform.compute_matrix() * p.extend(0.0).extend(1.0);
     let coordinate = Coordinate::<i32>::from_pixel(pos_wld.x, pos_wld.y, Spacing::FlatTop(SIZE));
-    if let Some(selected_hex) = selected_hex.as_ref() {
-        if selected_hex.coordinate == coordinate {
+    if let Some(val) = selected_hex.as_ref() {
+        if val.coordinate == coordinate {
             // don't deselect or select
             return;
         }
-        commands.entity(selected_hex.entity).despawn();
+        commands.entity(val.entity).despawn();
+        selected_hex.take();
     }
     let any_selected = tiles.iter().any(|(_, coord)| *coord == coordinate);
     if any_selected {
@@ -230,7 +232,6 @@ fn select_hex(
                 DrawMode::Stroke(StrokeOptions::default().with_line_width(5.0)),
                 Transform::from_xyz(x, y, 0.5),
             ))
-            .insert(coordinate)
             .id();
         let _ = selected_hex.insert(SelectedHex {
             entity: new_entity,

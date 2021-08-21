@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
+    core::FixedTimestep,
     diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     prelude::*,
 };
@@ -10,27 +11,11 @@ use crate::field::{NextRingTimer, NEXT_RING_TIMER_SECS};
 struct FpsCounter;
 struct NextRingCounter;
 pub struct UiPlugin;
-struct FpsTimer {
-    timer: Timer,
-}
 
-impl Default for FpsTimer {
-    fn default() -> Self {
-        Self {
-            timer: Timer::new(Duration::from_secs(1), true),
-        }
-    }
-}
 fn fps_change_text(
     diagnostics: Res<Diagnostics>,
-
-    time: Res<Time>,
-    mut timer: ResMut<FpsTimer>,
     mut query: Query<&mut Text, With<FpsCounter>>,
 ) {
-    if !timer.timer.tick(time.delta()).finished() {
-        return;
-    }
     let fps = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS).unwrap();
     if let Some(v) = fps.average() {
         for mut text in query.iter_mut() {
@@ -131,8 +116,11 @@ fn setup(
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_startup_system(setup.system())
-            .init_resource::<FpsTimer>()
-            .add_system(fps_change_text.system())
-            .add_system(next_ring_change_text.system());
+            .add_system_set(
+                SystemSet::new()
+                    .with_run_criteria(FixedTimestep::step(1. / 2.))
+                    .with_system(fps_change_text.system())
+                    .with_system(next_ring_change_text.system()),
+            );
     }
 }
