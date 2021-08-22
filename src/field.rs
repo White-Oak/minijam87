@@ -42,10 +42,6 @@ impl State {
         }
     }
 
-    fn absent_color() -> Color {
-        State::Inactive.color()
-    }
-
     fn is_obstacle(&self) -> bool {
         matches!(self, State::Obstacle)
     }
