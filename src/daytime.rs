@@ -7,33 +7,37 @@ const TICKS_IN_RUN: u32 = 1;
 const MAX_TICKS: u32 = MINUTES_IN_TICK * 60 * 24;
 
 #[derive(Debug)]
-pub struct Daytime(u32);
+pub struct Daytime(u32, u32);
 
 pub struct TickEvent;
 
 impl Default for Daytime {
     fn default() -> Self {
-        Self(7 * 60 / MINUTES_IN_TICK)
+        Self(1, 0)
     }
 }
 
 impl Daytime {
     fn get_minutes(&self) -> u32 {
-        self.0 % 60
+        self.1 % 60
     }
 
     fn get_hours(&self) -> u32 {
-        self.0 / 60
+        self.1 / 60
     }
 
     fn add(&mut self, ticks: u32) {
-        self.0 = (self.0 + ticks) % MAX_TICKS
+        self.1 += ticks;
+        if self.1 >= MAX_TICKS {
+            self.0 += self.1 / MAX_TICKS;
+            self.1 -= MAX_TICKS;
+        }
     }
 }
 
 impl Display for Daytime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:02}:{:02}", self.get_hours(), self.get_minutes())
+        write!(f, "Day {}, {:02}:{:02}", self.0, self.get_hours(), self.get_minutes())
     }
 }
 

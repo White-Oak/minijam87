@@ -8,12 +8,12 @@ use rand::{
     thread_rng, Rng,
 };
 
-use crate::{MainCamera, daytime::TickEvent, ui::{ChangeMoneyEvent, GeneratedNextRing, UpgradeTileEvent}, workers::{ReturningWorker, SpawnWorkerEvent, WaitingWorker, Worker}};
+use crate::{MainCamera, daytime::TickEvent, ui::{ChangeMoneyEvent, GeneratedNextRing, UpgradeTileEvent}, upgrade_particles::StartUpgradeEmitter, workers::{ReturningWorker, SpawnWorkerEvent, WaitingWorker, Worker}};
 
 const NEIGHBOURS_WEIGHTS: [[(State, u8); 3]; 3] = [
     [
-        (State::Inactive, 45),
-        (State::Active, 35),
+        (State::Inactive, 40),
+        (State::Active, 40),
         (State::Obstacle, 20),
     ],
     [
@@ -30,16 +30,14 @@ const NEIGHBOURS_WEIGHTS: [[(State, u8); 3]; 3] = [
 pub const SIZE: f32 = 100.;
 
 pub const START_RING_TIMER_SECS: f32 = 10.;
-pub const NEXT_RING_TIMER_SECS: f32 = 60.;
+pub const TIMER_MULTIPLER: f32 = 1.2;
 
-pub const DEBUG_MODE: bool = false;
-
-const BASE_CHANCE_TO_SPAWN_WORKER: u32 = 1;
+const BASE_CHANCE_TO_SPAWN_WORKER: u32 = 7;
 const CHANCE_INCREASE_PER_TICK: u32 = 1;
 const HUNDRED_PERCENT_CHANCE: u32 = 200;
 
-const REWARD_FOR_COFFEE: i32 = 2;
-const WAIT_TICKS_AFTER_SERVING: u32 = 6;
+const WAIT_TICKS_AFTER_SERVING: u32 = 3;
+const MAX_SHOPS_INCREASE: u32 = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub enum State {
@@ -95,6 +93,13 @@ struct CoffeeTile {
 
 struct GeneratedRings(i32);
 
+pub struct CoffeeShops(pub u32, pub u32);
+impl Default for CoffeeShops {
+    fn default() -> Self {
+        Self(1, 1)
+    }
+}
+
 impl Default for GeneratedRings {
     fn default() -> Self {
         Self(1)
@@ -116,24 +121,10 @@ fn build_hex_shape() -> shapes::RegularPolygon {
 
 fn spawn_tile(
     commands: &mut Commands,
-    font_handle: &Handle<Font>,
     c: Coordinate,
     tile: State,
 ) -> Entity {
     let (x, y) = c.to_pixel(Spacing::FlatTop(SIZE));
-    let (x_c, y_c) = (c.x, c.y);
-    let text = Text::with_section(
-        format!("{}, {}", x_c, y_c),
-        TextStyle {
-            font: font_handle.clone(),
-            font_size: 60.0,
-            color: Color::BLACK,
-        },
-        TextAlignment {
-            vertical: VerticalAlign::Center,
-            horizontal: HorizontalAlign::Center,
-        },
-    );
     let mut builder = commands.spawn();
     let builder = builder
         .insert_bundle(GeometryBuilder::build_as(
@@ -143,7 +134,7 @@ fn spawn_tile(
                 fill_options: FillOptions::default(),
                 outline_options: StrokeOptions::default().with_line_width(10.0),
             },
-            Transform::from_xyz(x, y, -0.1),
+            Transform::from_xyz(x, y, 0.),
         ))
         .insert(c)
         .insert(SelectableTile);
@@ -155,15 +146,6 @@ fn spawn_tile(
             builder.insert(CoffeeTile { waiting_ticks: 0 });
         }
         _ => {}
-    }
-    if DEBUG_MODE {
-        builder.with_children(|ec| {
-            ec.spawn_bundle(Text2dBundle {
-                text,
-                transform: Transform::from_xyz(0., 0., 0.1),
-                ..Text2dBundle::default()
-            });
-        });
     }
     builder.id()
 }
@@ -189,7 +171,7 @@ fn office_system(
                 let coffee = if let Some(x) = traverser.find() {
                     x
                 } else {
-                    log::error!("Cannot find nearest coffee shop");
+                    log::debug!("Cannot find nearest coffee shop");
                     continue;
                 };
                 let mut path = vec![coffee];
@@ -227,7 +209,7 @@ fn process_coffees(
             }
             log::debug!("looking for workers");
             let res = w_workers.iter().find(|(_, w)| w.coffee == *coord);
-            let (w_entity, _) = if let Some(x) = res {
+            let (w_entity, worker) = if let Some(x) = res {
                 x
             } else {
                 log::debug!("no workers");
@@ -236,7 +218,7 @@ fn process_coffees(
             shop.waiting_ticks = WAIT_TICKS_AFTER_SERVING;
             let mut ec = commands.entity(w_entity);
             ec.insert(ReturningWorker);
-            money.send(ChangeMoneyEvent(REWARD_FOR_COFFEE));
+            money.send(ChangeMoneyEvent(worker.will_bring_money as i32));
         }
     }
 }
@@ -253,7 +235,7 @@ fn return_worker(
         let coffee = if let Some(x) = traverser.find() {
             x
         } else {
-            log::error!("Cannot find nearest coffee shop");
+            log::debug!("Cannot find nearest coffee shop");
             continue;
         };
         let mut path = vec![coffee];
@@ -275,10 +257,9 @@ fn return_worker(
     }
 }
 
-fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>, map: Res<Map>) {
-    let font_handle = asset_server.load("FiraSans-Bold.ttf");
+fn setup(mut commands: Commands, map: Res<Map>) {
     for (c, tile) in map.tiles.iter() {
-        spawn_tile(&mut commands, &font_handle, *c, *tile);
+        spawn_tile(&mut commands, *c, *tile);
     }
 }
 
@@ -287,16 +268,17 @@ fn generate_next_ring(
     mut map: ResMut<Map>,
     mut timer: ResMut<NextRingTimer>,
     time: Res<Time>,
-    asset_server: ResMut<AssetServer>,
-    mut next_ring_event: EventWriter<GeneratedNextRing>
+    mut next_ring_event: EventWriter<GeneratedNextRing>,
+    mut shops: ResMut<CoffeeShops>,
 ) {
     if !timer.0.tick(time.delta()).finished() {
         return;
     }
-    *timer = NextRingTimer(Timer::from_seconds(NEXT_RING_TIMER_SECS as f32, false));
-    let font_handle = asset_server.load("FiraSans-Bold.ttf");
+    let duration = timer.0.duration().mul_f32(TIMER_MULTIPLER);
+    timer.0 = Timer::new(duration, false);
     map.generated_rings += 1;
-    let next_ring = Coordinate::new(0, 0).ring_iter(map.generated_rings as i32, Spin::CW(Direction::XY));
+    let next_ring =
+        Coordinate::new(0, 0).ring_iter(map.generated_rings as i32, Spin::CW(Direction::XY));
     let mut next_tiles = vec![];
     for c in next_ring {
         let obstacles = c
@@ -313,9 +295,11 @@ fn generate_next_ring(
     }
     for (c, tile) in next_tiles {
         map.tiles.insert(c, tile);
-        spawn_tile(&mut commands, &font_handle, c, tile);
+        spawn_tile(&mut commands, c, tile);
     }
     next_ring_event.send(GeneratedNextRing(map.generated_rings));
+    let delta = (map.generated_rings - 1).min(MAX_SHOPS_INCREASE);
+    shops.1 += delta;
 }
 
 impl Default for Map {
@@ -351,10 +335,14 @@ fn upgrade_hex(
     selected: Res<Option<SelectedHex>>,
     mut map: ResMut<Map>,
     mut events: EventReader<UpgradeTileEvent>,
-    asset_server: ResMut<AssetServer>,
     tiles: Query<(Entity, &Coordinate), With<SelectableTile>>,
+    mut shops: ResMut<CoffeeShops>,
+    mut emitter_events: EventWriter<StartUpgradeEmitter>
 ) {
     for _ in events.iter() {
+        if shops.0 >= shops.1 {
+            continue;
+        }
         let selected = if let Some(x) = selected.as_ref() {
             x
         } else {
@@ -372,15 +360,16 @@ fn upgrade_hex(
             .iter()
             .find(|(_, c)| **c == selected.coordinate)
             .expect("already checked tile for existence");
+        shops.0 += 1;
         map.tiles.insert(selected.coordinate, State::BreakShop);
         commands.entity(entity).despawn_recursive();
-        let font_handle = asset_server.load("FiraSans-Bold.ttf");
         spawn_tile(
             &mut commands,
-            &font_handle,
             selected.coordinate,
             State::BreakShop,
         );
+        let (x, y) = selected.coordinate.to_pixel(Spacing::FlatTop(SIZE));
+        emitter_events.send(StartUpgradeEmitter(Vec3::new(x, y, 0.2)));
     }
 }
 
@@ -442,6 +431,7 @@ impl Plugin for FieldPlugin {
             .init_resource::<Option<SelectedHex>>()
             .init_resource::<Map>()
             .init_resource::<NextRingTimer>()
+            .init_resource::<CoffeeShops>()
             .add_system(generate_next_ring.system())
             .add_system(office_system.system())
             .add_system(return_worker.system())

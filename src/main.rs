@@ -2,12 +2,16 @@ mod ui;
 mod workers;
 mod field;
 mod daytime;
+mod upgrade_particles;
+mod overwait_particles;
 
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, text::TextPlugin};
 use bevy_prototype_lyon::prelude::*;
 use daytime::DaytimePlugin;
 use field::FieldPlugin;
+use overwait_particles::OverwaitParticlesPlugin;
 use ui::UiPlugin;
+use upgrade_particles::UpgradeParticlesPlugin;
 use workers::WorkerPlugin;
 
 
@@ -23,6 +27,8 @@ fn main() {
         .add_plugin(FieldPlugin)
         .add_plugin(DaytimePlugin)
         .add_plugin(WorkerPlugin)
+        .add_plugin(UpgradeParticlesPlugin)
+        .add_plugin(OverwaitParticlesPlugin)
         .run();
 }
 

@@ -4,21 +4,26 @@ use bevy::{log, prelude::*, sprite::TextureAtlas};
 use hex2d::{Coordinate, Spacing};
 use rand::{thread_rng, Rng};
 
-use crate::{daytime::TickEvent, field::SIZE, ui::ChangeMoneyEvent};
+use crate::{daytime::TickEvent, field::SIZE, overwait_particles::StartOverwaitEmitter, ui::ChangeMoneyEvent};
 
 pub struct Worker {
     pub home: Coordinate,
     pub coffee: Coordinate,
     pub path: Vec<Coordinate>,
     pub waited_for_coffee: bool,
+    pub will_bring_money: u8
 }
 
 const FRAMES_PER_ONE_TILE: u32 = 64;
 pub struct MovingWorker(u32, Vec3);
 
-const MAX_WAITING_TICKS: u32 = 100;
+const MAX_WAITING_TICKS: u32 = 50;
+const FEE_FOR_OVERWAIT: i32 = -4;
 
-const FEE_FOR_OVERWAIT: i32 = -5;
+fn money_for_path(path_len: usize) -> u8 {
+    let y = (path_len as f32) * -0.5 + 2.5;
+    y.ceil().max(0.) as u8
+}
 
 pub struct WaitingWorker(u32);
 
@@ -86,14 +91,16 @@ fn wait_worker(
     mut commands: Commands,
     mut ticks: EventReader<TickEvent>,
     mut money: EventWriter<ChangeMoneyEvent>,
-    mut query: Query<(Entity, &mut WaitingWorker)>,
+    mut query: Query<(Entity, &mut WaitingWorker, &Transform)>,
+    mut overwait_events: EventWriter<StartOverwaitEmitter>
 ) {
     for _ in ticks.iter() {
-        for (entity, mut w) in query.iter_mut() {
+        for (entity, mut w, trns) in query.iter_mut() {
             w.0 += 1;
             if w.0 >= MAX_WAITING_TICKS {
                 commands.entity(entity).despawn_recursive();
                 money.send(ChangeMoneyEvent(FEE_FOR_OVERWAIT));
+                overwait_events.send(StartOverwaitEmitter(trns.translation))
             }
         }
     }
@@ -137,6 +144,7 @@ fn spawn_worker(
             ..Default::default()
         };
         let main_transform = Transform::from_xyz(x, y, 0.9);
+        let will_bring_money = money_for_path(path.len());
         commands
             .spawn()
             .insert(Worker {
@@ -144,6 +152,7 @@ fn spawn_worker(
                 coffee: *coffee,
                 path: path.clone(),
                 waited_for_coffee: false,
+                will_bring_money
             })
             .insert(main_transform)
             .insert(GlobalTransform::default())

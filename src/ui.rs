@@ -1,4 +1,4 @@
-use std::{process};
+use std::process;
 
 use bevy::{
     core::FixedTimestep,
@@ -8,16 +8,13 @@ use bevy::{
     window::WindowResized,
 };
 
-use crate::{
-    daytime::Daytime,
-    field::{Map, NextRingTimer,SIZE},
-    MainCamera,
-};
+use crate::{MainCamera, daytime::Daytime, field::{CoffeeShops, Map, NextRingTimer, SIZE}};
 
 struct FpsCounter;
 struct NextRingCounter;
 struct MoneyTextCounter;
 struct TimeTextCounter;
+struct CoffeeShopsCounter;
 
 pub struct Money(u32);
 pub struct ChangeMoneyEvent(pub i32);
@@ -51,6 +48,15 @@ fn money_change_text(money: Res<Money>, mut query: Query<&mut Text, With<MoneyTe
     }
 }
 
+fn shops_change_text(shops: Res<CoffeeShops>, mut query: Query<&mut Text, With<CoffeeShopsCounter>>) {
+    if shops.is_changed() {
+        for mut text in query.iter_mut() {
+            text.sections[0].value = format!("Cofee shops: {}/{}", shops.0, shops.1);
+        }
+    }
+}
+
+
 fn next_ring_change_text(
     timer: Res<NextRingTimer>,
     mut query: Query<&mut Text, With<NextRingCounter>>,
@@ -63,7 +69,7 @@ fn next_ring_change_text(
 
 fn daytime_change_text(daytime: Res<Daytime>, mut query: Query<&mut Text, With<TimeTextCounter>>) {
     for mut text in query.iter_mut() {
-        text.sections[0].value = format!("Time: {}", daytime.to_string());
+        text.sections[0].value = daytime.to_string();
     }
 }
 
@@ -140,6 +146,18 @@ fn setup(
     let text = Text::with_section(
         "Until next ring: ".to_string(),
         TextStyle {
+            font: font_handle.clone(),
+            font_size: 30.0,
+            color: Color::BLACK,
+        },
+        TextAlignment {
+            vertical: VerticalAlign::Top,
+            horizontal: HorizontalAlign::Left,
+        },
+    );
+    let shops_text = Text::with_section(
+        "Coffee shops: 1/1".to_string(),
+        TextStyle {
             font: font_handle,
             font_size: 30.0,
             color: Color::BLACK,
@@ -214,42 +232,13 @@ fn setup(
                     ..Default::default()
                 })
                 .insert(TimeTextCounter);
+                ec.spawn_bundle(TextBundle {
+                    text: shops_text,
+                    ..Default::default()
+                })
+                .insert(CoffeeShopsCounter);
             });
 
-            // ec.spawn_bundle(NodeBundle {
-            //     style: Style {
-            //         flex_direction: FlexDirection::ColumnReverse,
-            //         size: Size {
-            //             width: Val::Px(310.),
-            //             height: Val::Undefined,
-            //         },
-            //         max_size: Size {
-            //             width: Val::Px(310.),
-            //             height: Val::Undefined,
-            //         },
-            //         padding: Rect {
-            //             left: Val::Px(10.),
-            //             top: Val::Px(10.),
-            //             bottom: Val::Px(10.),
-            //             right: Val::Px(10.),
-            //         },
-            //         margin: Rect {
-            //             top: Val::Px(20.),
-            //             ..Default::default()
-            //         },
-            //         align_items: AlignItems::FlexStart,
-            //         ..Default::default()
-            //     },
-            //     material: card_material,
-            //     ..Default::default()
-            // })
-            // .with_children(|ec| {
-            //     ec.spawn_bundle(TextBundle {
-            //         text,
-            //         ..Default::default()
-            //     })
-            //     .insert(NextRingCounter);
-            // });
         });
 }
 
@@ -270,8 +259,12 @@ fn change_money(mut money: ResMut<Money>, mut events: EventReader<ChangeMoneyEve
     }
 }
 
-fn keyboard_input(keys: Res<Input<KeyCode>>, mut events: EventWriter<UpgradeTileEvent>) {
-    if keys.just_pressed(KeyCode::U) {
+fn keyboard_input(
+    keys: Res<Input<KeyCode>>,
+    mouse: Res<Input<MouseButton>>,
+    mut events: EventWriter<UpgradeTileEvent>,
+) {
+    if keys.just_pressed(KeyCode::U) || mouse.just_pressed(MouseButton::Left) {
         events.send(UpgradeTileEvent);
     }
 }
@@ -286,6 +279,7 @@ fn calc_scale_vec(rings: u32, wnd_height: f32) -> Vec3 {
 fn set_scale(query: &mut Query<&mut Transform, With<MainCamera>>, windows: &Windows, rings: u32) {
     let wnd = windows.get_primary().unwrap();
     for mut proj in query.iter_mut() {
+        // println!("{:?}", proj.scale);
         proj.scale = calc_scale_vec(rings, wnd.height());
     }
 }
@@ -321,7 +315,8 @@ impl Plugin for UiPlugin {
                     .with_system(fps_change_text.system())
                     .with_system(next_ring_change_text.system())
                     .with_system(money_change_text.system())
-                    .with_system(daytime_change_text.system()),
+                    .with_system(daytime_change_text.system())
+                    .with_system(shops_change_text.system()),
             )
             .add_system(change_camera_scale.system())
             .add_system(change_camera_scale_from_resize.system())
