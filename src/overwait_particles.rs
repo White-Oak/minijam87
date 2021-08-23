@@ -1,16 +1,15 @@
-
 use bevy::prelude::*;
 use bevy::{core::Timer, math::Vec3};
 use rand::{thread_rng, Rng};
 
+use crate::utils::time_k;
 
 struct Particle;
-struct Lifetime(i32);
+struct Lifetime(f32);
 struct Velocity(Vec3);
 struct Acceleration(Vec3);
 struct Alive(bool);
 
-const MAX_EMITTERS: u32 = 50;
 #[derive(Default)]
 struct CurrentEmitters(u32);
 
@@ -20,13 +19,14 @@ struct OverwaitEmitter {
 
 pub struct StartOverwaitEmitter(pub Vec3);
 
-const EMIT_DURATION: f32 = 3.;
+const MAX_EMITTERS: u32 = 100;
+const EMIT_DURATION: f32 = 2.;
 
 const VARIETY: usize = 50;
 const MAX_RED: f32 = 0.9;
 const STEP_RED: f32 = MAX_RED / VARIETY as f32;
 const INITIAL_SIZE: f32 = 15.;
-const MAX_LIFETIME: i32 = 100;
+const MAX_LIFETIME: f32 = 100.;
 const AMOUNT: u32 = 30;
 const AMOUNT_VARIANCE: f32 = 0.2;
 
@@ -34,7 +34,7 @@ fn create_emitter(
     mut event_reader: EventReader<StartOverwaitEmitter>,
     mut commands: Commands,
     particle_materials: Res<ParticleMaterials>,
-    mut current_emitters: ResMut<CurrentEmitters>
+    mut current_emitters: ResMut<CurrentEmitters>,
 ) {
     for StartOverwaitEmitter(translation) in event_reader.iter() {
         if current_emitters.0 >= MAX_EMITTERS {
@@ -102,12 +102,17 @@ impl FromWorld for ParticleMaterials {
     }
 }
 
-fn kill_particles(mut commands: Commands, mut query: Query<(Entity, &mut Lifetime, &mut Sprite)>) {
+fn kill_particles(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Lifetime, &mut Sprite)>,
+) {
+    let time_k = time_k(&time);
     for (entity, mut lifetime, mut sprite) in query.iter_mut() {
-        lifetime.0 -= 3;
+        lifetime.0 -= 3. * time_k;
         let ratio = (lifetime.0 as f32) / MAX_LIFETIME as f32;
         sprite.size = Vec2::splat(INITIAL_SIZE * ratio);
-        if lifetime.0 <= 0 {
+        if lifetime.0 <= 0. {
             commands.entity(entity).despawn();
         }
     }
@@ -115,9 +120,9 @@ fn kill_particles(mut commands: Commands, mut query: Query<(Entity, &mut Lifetim
 
 fn kill_emitter(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut OverwaitEmitter)>,
     time: Res<Time>,
-    mut current_emitters: ResMut<CurrentEmitters>
+    mut query: Query<(Entity, &mut OverwaitEmitter)>,
+    mut current_emitters: ResMut<CurrentEmitters>,
 ) {
     for (entity, mut emitter) in query.iter_mut() {
         if emitter.duration.tick(time.delta()).finished() {
@@ -128,12 +133,14 @@ fn kill_emitter(
 }
 
 fn update_pos(
+    time: Res<Time>,
     mut query: Query<(&mut Transform, &mut Velocity, &Acceleration, &Alive), With<Particle>>,
 ) {
+    let time_k = time_k(&time);
     for (mut pos, mut vel, accel, is_alive) in query.iter_mut() {
         if is_alive.0 {
-            vel.0 += accel.0;
-            pos.translation += vel.0;
+            vel.0 += accel.0 * time_k;
+            pos.translation += vel.0 * time_k;
         }
     }
 }
@@ -148,7 +155,6 @@ impl Plugin for OverwaitParticlesPlugin {
             .add_system(update_pos.system())
             .add_event::<StartOverwaitEmitter>()
             .init_resource::<ParticleMaterials>()
-            .init_resource::<CurrentEmitters>()
-            ;
+            .init_resource::<CurrentEmitters>();
     }
 }

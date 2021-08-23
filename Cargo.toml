@@ -7,7 +7,7 @@ edition = "2018"
 authors = ["White Oak"]
 
 [dependencies]
-bevy = { version = "0.5.0", features = [] }
+bevy = { version = "0.5.0", features = ["dynamic"] }
 bevy_prototype_lyon = "0.3.1"
 hex2d = "1.1.0"
 hex2d-dpcext = { git = "https://github.com/White-Oak/hex2d-dpcext-rs"}

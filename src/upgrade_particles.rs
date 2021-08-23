@@ -5,9 +5,10 @@ use bevy::{core::Timer, math::Vec3};
 use rand::{thread_rng, Rng};
 
 use crate::field::SIZE;
+use crate::utils::time_k;
 
 struct Particle;
-struct Lifetime(i32);
+struct Lifetime(f32);
 struct Velocity(Vec3);
 struct Acceleration(Vec3);
 struct Alive(bool);
@@ -24,7 +25,7 @@ const VARIETY: usize = 50;
 const MAX_GREEN: f32 = 0.9;
 const STEP_GREEN: f32 = MAX_GREEN / VARIETY as f32;
 const INITIAL_SIZE: f32 = 15.;
-const MAX_LIFETIME: i32 = 100;
+const MAX_LIFETIME: f32 = 100.;
 const AMOUNT: u32 = 50;
 const AMOUNT_VARIANCE: f32 = 0.2;
 
@@ -53,6 +54,7 @@ fn create_emitter(
                     let trnsl = start_location(&mut rng);
                     let transform = Transform::from_translation(trnsl);
                     let velocity = trnsl / (SIZE) * rng.gen_range(0.5..2.0);
+                    let accel = -velocity / 24.;
                     ec.spawn_bundle(SpriteBundle {
                         sprite: Sprite::new(tile_size),
                         material,
@@ -60,7 +62,7 @@ fn create_emitter(
                         ..Default::default()
                     })
                     .insert(Particle)
-                    .insert(Acceleration(Vec3::new(0.0, 0.0, 0.0)))
+                    .insert(Acceleration(accel))
                     .insert(Velocity(velocity))
                     .insert(Alive(true))
                     .insert(Lifetime(MAX_LIFETIME));
@@ -98,12 +100,17 @@ fn start_location<R: Rng>(rng: &mut R) -> Vec3 {
     Vec3::new(x, y, 0.)
 }
 
-fn kill_particles(mut commands: Commands, mut query: Query<(Entity, &mut Lifetime, &mut Sprite)>) {
+fn kill_particles(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Lifetime, &mut Sprite)>,
+) {
+    let time_k = time_k(&time);
     for (entity, mut lifetime, mut sprite) in query.iter_mut() {
-        lifetime.0 -= 3;
+        lifetime.0 -= 3. * time_k;
         let ratio = (lifetime.0 as f32) / MAX_LIFETIME as f32;
         sprite.size = Vec2::splat(INITIAL_SIZE * ratio);
-        if lifetime.0 <= 0 {
+        if lifetime.0 <= 0. {
             commands.entity(entity).despawn();
         }
     }
@@ -122,12 +129,14 @@ fn kill_emitter(
 }
 
 fn update_pos(
+    time: Res<Time>,
     mut query: Query<(&mut Transform, &mut Velocity, &Acceleration, &Alive), With<Particle>>,
 ) {
+    let time_k = time_k(&time);
     for (mut pos, mut vel, accel, is_alive) in query.iter_mut() {
         if is_alive.0 {
-            vel.0 += accel.0;
-            pos.translation += vel.0;
+            vel.0 += accel.0 * time_k;
+            pos.translation += vel.0 * time_k;
         }
     }
 }

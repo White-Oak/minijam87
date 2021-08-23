@@ -4,14 +4,16 @@ use bevy::{log, prelude::*, sprite::TextureAtlas};
 use hex2d::{Coordinate, Spacing};
 use rand::{thread_rng, Rng};
 
-use crate::{daytime::TickEvent, field::SIZE, overwait_particles::StartOverwaitEmitter, ui::ChangeMoneyEvent};
+use crate::{
+    daytime::TickEvent, field::SIZE, overwait_particles::StartOverwaitEmitter, ui::ChangeMoneyEvent,
+};
 
 pub struct Worker {
     pub home: Coordinate,
     pub coffee: Coordinate,
     pub path: Vec<Coordinate>,
     pub waited_for_coffee: bool,
-    pub will_bring_money: u8
+    pub will_bring_money: u8,
 }
 
 const FRAMES_PER_ONE_TILE: u32 = 64;
@@ -26,6 +28,11 @@ fn money_for_path(path_len: usize) -> u8 {
 }
 
 pub struct WaitingWorker(u32);
+impl WaitingWorker {
+    pub fn is_dead(&self) -> bool {
+        self.0 >= MAX_WAITING_TICKS
+    }
+}
 
 pub struct ReturningWorker;
 
@@ -92,12 +99,12 @@ fn wait_worker(
     mut ticks: EventReader<TickEvent>,
     mut money: EventWriter<ChangeMoneyEvent>,
     mut query: Query<(Entity, &mut WaitingWorker, &Transform)>,
-    mut overwait_events: EventWriter<StartOverwaitEmitter>
+    mut overwait_events: EventWriter<StartOverwaitEmitter>,
 ) {
     for _ in ticks.iter() {
         for (entity, mut w, trns) in query.iter_mut() {
             w.0 += 1;
-            if w.0 >= MAX_WAITING_TICKS {
+            if w.is_dead() {
                 commands.entity(entity).despawn_recursive();
                 money.send(ChangeMoneyEvent(FEE_FOR_OVERWAIT));
                 overwait_events.send(StartOverwaitEmitter(trns.translation))
@@ -152,7 +159,7 @@ fn spawn_worker(
                 coffee: *coffee,
                 path: path.clone(),
                 waited_for_coffee: false,
-                will_bring_money
+                will_bring_money,
             })
             .insert(main_transform)
             .insert(GlobalTransform::default())
@@ -181,7 +188,7 @@ impl Plugin for WorkerPlugin {
             .add_system(spawn_worker.system())
             .add_system(start_moving_worker.system())
             .add_system(move_worker.system())
-            .add_system(wait_worker.system())
+            .add_system(wait_worker.system().before("coffee"))
             .add_event::<SpawnWorkerEvent>();
     }
 }

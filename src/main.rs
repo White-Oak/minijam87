@@ -1,9 +1,10 @@
-mod ui;
-mod workers;
-mod field;
 mod daytime;
-mod upgrade_particles;
+mod field;
 mod overwait_particles;
+mod ui;
+mod upgrade_particles;
+mod utils;
+mod workers;
 
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, text::TextPlugin};
 use bevy_prototype_lyon::prelude::*;
@@ -13,7 +14,6 @@ use overwait_particles::OverwaitParticlesPlugin;
 use ui::UiPlugin;
 use upgrade_particles::UpgradeParticlesPlugin;
 use workers::WorkerPlugin;
-
 
 fn main() {
     App::build()

@@ -1,4 +1,8 @@
-use bevy::{log, prelude::*, utils::HashMap};
+use bevy::{
+    log,
+    prelude::*,
+    utils::{HashMap, HashSet},
+};
 use bevy_prototype_lyon::prelude::*;
 use hex2d::{Coordinate, Direction, Spacing, Spin};
 use hex2d_dpcext::algo::bfs::Traverser;
@@ -8,7 +12,13 @@ use rand::{
     thread_rng, Rng,
 };
 
-use crate::{MainCamera, daytime::TickEvent, ui::{ChangeMoneyEvent, GeneratedNextRing, UpgradeTileEvent}, upgrade_particles::StartUpgradeEmitter, workers::{ReturningWorker, SpawnWorkerEvent, WaitingWorker, Worker}};
+use crate::{
+    daytime::TickEvent,
+    ui::{ChangeMoneyEvent, GeneratedNextRing, UpgradeTileEvent},
+    upgrade_particles::StartUpgradeEmitter,
+    workers::{ReturningWorker, SpawnWorkerEvent, WaitingWorker, Worker},
+    MainCamera,
+};
 
 const NEIGHBOURS_WEIGHTS: [[(State, u8); 3]; 3] = [
     [
@@ -32,12 +42,13 @@ pub const SIZE: f32 = 100.;
 pub const START_RING_TIMER_SECS: f32 = 10.;
 pub const TIMER_MULTIPLER: f32 = 1.2;
 
-const BASE_CHANCE_TO_SPAWN_WORKER: u32 = 7;
+const BASE_CHANCE_TO_SPAWN_WORKER: u32 = 9;
 const CHANCE_INCREASE_PER_TICK: u32 = 1;
 const HUNDRED_PERCENT_CHANCE: u32 = 200;
 
 const WAIT_TICKS_AFTER_SERVING: u32 = 3;
 const MAX_SHOPS_INCREASE: u32 = 3;
+const STARTING_MAX_SHOPS: u32 = 1;
 
 #[derive(Debug, Clone, Copy)]
 pub enum State {
@@ -96,7 +107,7 @@ struct GeneratedRings(i32);
 pub struct CoffeeShops(pub u32, pub u32);
 impl Default for CoffeeShops {
     fn default() -> Self {
-        Self(1, 1)
+        Self(1, STARTING_MAX_SHOPS)
     }
 }
 
@@ -119,11 +130,7 @@ fn build_hex_shape() -> shapes::RegularPolygon {
     }
 }
 
-fn spawn_tile(
-    commands: &mut Commands,
-    c: Coordinate,
-    tile: State,
-) -> Entity {
+fn spawn_tile(commands: &mut Commands, c: Coordinate, tile: State) -> Entity {
     let (x, y) = c.to_pixel(Spacing::FlatTop(SIZE));
     let mut builder = commands.spawn();
     let builder = builder
@@ -196,11 +203,12 @@ fn office_system(
 
 fn process_coffees(
     mut commands: Commands,
-    w_workers: Query<(Entity, &Worker), (With<WaitingWorker>, Without<ReturningWorker>)>,
+    w_workers: Query<(Entity, &Worker, &WaitingWorker), Without<ReturningWorker>>,
     mut shops: Query<(&Coordinate, &mut CoffeeTile)>,
     mut ticks: EventReader<TickEvent>,
     mut money: EventWriter<ChangeMoneyEvent>,
 ) {
+    let mut set = HashSet::with_capacity_and_hasher(2, Default::default());
     for _ in ticks.iter() {
         for (coord, mut shop) in shops.iter_mut() {
             if shop.waiting_ticks != 0 {
@@ -208,13 +216,16 @@ fn process_coffees(
                 continue;
             }
             log::debug!("looking for workers");
-            let res = w_workers.iter().find(|(_, w)| w.coffee == *coord);
-            let (w_entity, worker) = if let Some(x) = res {
+            let res = w_workers.iter().find(|(entity, w, ww)| {
+                !ww.is_dead() && w.coffee == *coord && !set.contains(entity)
+            });
+            let (w_entity, worker, _) = if let Some(x) = res {
                 x
             } else {
                 log::debug!("no workers");
                 continue;
             };
+            set.insert(w_entity);
             shop.waiting_ticks = WAIT_TICKS_AFTER_SERVING;
             let mut ec = commands.entity(w_entity);
             ec.insert(ReturningWorker);
@@ -337,7 +348,7 @@ fn upgrade_hex(
     mut events: EventReader<UpgradeTileEvent>,
     tiles: Query<(Entity, &Coordinate), With<SelectableTile>>,
     mut shops: ResMut<CoffeeShops>,
-    mut emitter_events: EventWriter<StartUpgradeEmitter>
+    mut emitter_events: EventWriter<StartUpgradeEmitter>,
 ) {
     for _ in events.iter() {
         if shops.0 >= shops.1 {
@@ -363,11 +374,7 @@ fn upgrade_hex(
         shops.0 += 1;
         map.tiles.insert(selected.coordinate, State::BreakShop);
         commands.entity(entity).despawn_recursive();
-        spawn_tile(
-            &mut commands,
-            selected.coordinate,
-            State::BreakShop,
-        );
+        spawn_tile(&mut commands, selected.coordinate, State::BreakShop);
         let (x, y) = selected.coordinate.to_pixel(Spacing::FlatTop(SIZE));
         emitter_events.send(StartUpgradeEmitter(Vec3::new(x, y, 0.2)));
     }
@@ -435,7 +442,7 @@ impl Plugin for FieldPlugin {
             .add_system(generate_next_ring.system())
             .add_system(office_system.system())
             .add_system(return_worker.system())
-            .add_system(process_coffees.system())
+            .add_system(process_coffees.system().label("coffee"))
             .add_system(upgrade_hex.system())
             .add_system(select_hex.system());
     }

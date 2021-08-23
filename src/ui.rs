@@ -8,7 +8,11 @@ use bevy::{
     window::WindowResized,
 };
 
-use crate::{MainCamera, daytime::Daytime, field::{CoffeeShops, Map, NextRingTimer, SIZE}};
+use crate::{
+    daytime::Daytime,
+    field::{CoffeeShops, Map, NextRingTimer, SIZE},
+    MainCamera,
+};
 
 struct FpsCounter;
 struct NextRingCounter;
@@ -48,14 +52,16 @@ fn money_change_text(money: Res<Money>, mut query: Query<&mut Text, With<MoneyTe
     }
 }
 
-fn shops_change_text(shops: Res<CoffeeShops>, mut query: Query<&mut Text, With<CoffeeShopsCounter>>) {
+fn shops_change_text(
+    shops: Res<CoffeeShops>,
+    mut query: Query<&mut Text, With<CoffeeShopsCounter>>,
+) {
     if shops.is_changed() {
         for mut text in query.iter_mut() {
             text.sections[0].value = format!("Cofee shops: {}/{}", shops.0, shops.1);
         }
     }
 }
-
 
 fn next_ring_change_text(
     timer: Res<NextRingTimer>,
@@ -238,7 +244,6 @@ fn setup(
                 })
                 .insert(CoffeeShopsCounter);
             });
-
         });
 }
 

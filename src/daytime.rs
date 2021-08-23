@@ -37,7 +37,13 @@ impl Daytime {
 
 impl Display for Daytime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Day {}, {:02}:{:02}", self.0, self.get_hours(), self.get_minutes())
+        write!(
+            f,
+            "Day {}, {:02}:{:02}",
+            self.0,
+            self.get_hours(),
+            self.get_minutes()
+        )
     }
 }
 
