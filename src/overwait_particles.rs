@@ -61,7 +61,7 @@ fn create_emitter(
                     let variety_idx = rng.gen_range(0..VARIETY);
                     let material = particle_materials.0[variety_idx].clone();
                     let transform = Transform::from_translation(Vec3::new(
-                        rng.gen_range(-5.0..5.),
+                        rng.gen_range(-6.0..6.),
                         rng.gen_range(0.0..2.),
                         0.,
                     ));

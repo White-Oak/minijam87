@@ -18,7 +18,7 @@ const FRAMES_PER_ONE_TILE: u32 = 64;
 pub struct MovingWorker(u32, Vec3);
 
 const MAX_WAITING_TICKS: u32 = 50;
-const FEE_FOR_OVERWAIT: i32 = -4;
+const FEE_FOR_OVERWAIT: i32 = -5;
 
 fn money_for_path(path_len: usize) -> u8 {
     let y = (path_len as f32) * -0.5 + 2.5;
