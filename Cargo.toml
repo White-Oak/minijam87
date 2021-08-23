@@ -10,6 +10,7 @@ authors = ["White Oak"]
 bevy = { version = "0.5.0", features = ["dynamic"] }
 bevy_prototype_lyon = "0.3.1"
 hex2d = "1.1.0"
+hex2d-dpcext = { git = "https://github.com/White-Oak/hex2d-dpcext-rs"}
 rand = "0.8.4"
 
 [profile.release]

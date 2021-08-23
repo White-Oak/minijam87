@@ -1,17 +1,37 @@
-use std::time::Duration;
+use std::{process};
 
 use bevy::{
     core::FixedTimestep,
     diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
+    log,
     prelude::*,
+    window::WindowResized,
 };
 
-use crate::field::{NextRingTimer, NEXT_RING_TIMER_SECS};
+use crate::{
+    daytime::Daytime,
+    field::{Map, NextRingTimer,SIZE},
+    MainCamera,
+};
 
 struct FpsCounter;
 struct NextRingCounter;
 struct MoneyTextCounter;
 struct TimeTextCounter;
+
+pub struct Money(u32);
+pub struct ChangeMoneyEvent(pub i32);
+
+impl Default for Money {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
+pub struct UpgradeTileEvent;
+
+pub struct GeneratedNextRing(pub u32);
+
 pub struct UiPlugin;
 
 fn fps_change_text(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsCounter>>) {
@@ -23,13 +43,27 @@ fn fps_change_text(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, Wi
     }
 }
 
+fn money_change_text(money: Res<Money>, mut query: Query<&mut Text, With<MoneyTextCounter>>) {
+    if money.is_changed() {
+        for mut text in query.iter_mut() {
+            text.sections[0].value = format!("Money: {}", money.0 as i64);
+        }
+    }
+}
+
 fn next_ring_change_text(
     timer: Res<NextRingTimer>,
     mut query: Query<&mut Text, With<NextRingCounter>>,
 ) {
-    let left = timer.0.percent_left() * NEXT_RING_TIMER_SECS;
+    let left = timer.0.percent_left() * 100.;
     for mut text in query.iter_mut() {
-        text.sections[0].value = format!("Until next ring: {}", left as i64);
+        text.sections[0].value = format!("Until next ring: {}%", left as i64);
+    }
+}
+
+fn daytime_change_text(daytime: Res<Daytime>, mut query: Query<&mut Text, With<TimeTextCounter>>) {
+    for mut text in query.iter_mut() {
+        text.sections[0].value = format!("Time: {}", daytime.to_string());
     }
 }
 
@@ -103,12 +137,11 @@ fn setup(
             horizontal: HorizontalAlign::Left,
         },
     );
-    let card_material = color_materials.add(Color::rgb_u8(230, 245, 255).into());
     let text = Text::with_section(
         "Until next ring: ".to_string(),
         TextStyle {
             font: font_handle,
-            font_size: 40.0,
+            font_size: 30.0,
             color: Color::BLACK,
         },
         TextAlignment {
@@ -116,6 +149,7 @@ fn setup(
             horizontal: HorizontalAlign::Left,
         },
     );
+    let card_material = color_materials.add(Color::rgb_u8(230, 245, 255).into());
     ui_cmds
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -134,12 +168,6 @@ fn setup(
                     width: Val::Px(310.),
                     height: Val::Undefined,
                 },
-                // border: Rect {
-                //     left: Val::Px(10.),
-                //     top: Val::Px(10.),
-                //     bottom: Val::Px(10.),
-                //     right: Val::Px(10.),
-                // },
                 align_items: AlignItems::FlexStart,
                 ..Default::default()
             },
@@ -188,50 +216,120 @@ fn setup(
                 .insert(TimeTextCounter);
             });
 
-            ec.spawn_bundle(NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::ColumnReverse,
-                    size: Size {
-                        width: Val::Px(310.),
-                        height: Val::Undefined,
-                    },
-                    max_size: Size {
-                        width: Val::Px(310.),
-                        height: Val::Undefined,
-                    },
-                    padding: Rect {
-                        left: Val::Px(10.),
-                        top: Val::Px(10.),
-                        bottom: Val::Px(10.),
-                        right: Val::Px(10.),
-                    },
-                    margin: Rect {
-                        top: Val::Px(20.),
-                        ..Default::default()
-                    },
-                    align_items: AlignItems::FlexStart,
-                    ..Default::default()
-                },
-                material: card_material,
-                ..Default::default()
-            })
-            .with_children(|ec| {
-                ec.spawn_bundle(TextBundle {
-                    text,
-                    ..Default::default()
-                })
-                .insert(NextRingCounter);
-            });
+            // ec.spawn_bundle(NodeBundle {
+            //     style: Style {
+            //         flex_direction: FlexDirection::ColumnReverse,
+            //         size: Size {
+            //             width: Val::Px(310.),
+            //             height: Val::Undefined,
+            //         },
+            //         max_size: Size {
+            //             width: Val::Px(310.),
+            //             height: Val::Undefined,
+            //         },
+            //         padding: Rect {
+            //             left: Val::Px(10.),
+            //             top: Val::Px(10.),
+            //             bottom: Val::Px(10.),
+            //             right: Val::Px(10.),
+            //         },
+            //         margin: Rect {
+            //             top: Val::Px(20.),
+            //             ..Default::default()
+            //         },
+            //         align_items: AlignItems::FlexStart,
+            //         ..Default::default()
+            //     },
+            //     material: card_material,
+            //     ..Default::default()
+            // })
+            // .with_children(|ec| {
+            //     ec.spawn_bundle(TextBundle {
+            //         text,
+            //         ..Default::default()
+            //     })
+            //     .insert(NextRingCounter);
+            // });
         });
+}
+
+fn change_money(mut money: ResMut<Money>, mut events: EventReader<ChangeMoneyEvent>) {
+    for &ChangeMoneyEvent(delta) in events.iter() {
+        if delta.is_negative() {
+            let delta = delta.abs() as u32;
+            let res = money.0.checked_sub(delta);
+            if let Some(res) = res {
+                money.0 = res;
+            } else {
+                log::info!("Game over!");
+                process::exit(0);
+            }
+        } else {
+            money.0 += delta as u32;
+        }
+    }
+}
+
+fn keyboard_input(keys: Res<Input<KeyCode>>, mut events: EventWriter<UpgradeTileEvent>) {
+    if keys.just_pressed(KeyCode::U) {
+        events.send(UpgradeTileEvent);
+    }
+}
+
+fn calc_scale_vec(rings: u32, wnd_height: f32) -> Vec3 {
+    let total_height = SIZE * 3_f32.sqrt() * (1 + rings * 2) as f32;
+    let scale = total_height / wnd_height;
+    let scale = scale.max(1.);
+    Vec3::new(scale, scale, 1.)
+}
+
+fn set_scale(query: &mut Query<&mut Transform, With<MainCamera>>, windows: &Windows, rings: u32) {
+    let wnd = windows.get_primary().unwrap();
+    for mut proj in query.iter_mut() {
+        proj.scale = calc_scale_vec(rings, wnd.height());
+    }
+}
+
+fn change_camera_scale(
+    mut query: Query<&mut Transform, With<MainCamera>>,
+    mut events: EventReader<GeneratedNextRing>,
+    windows: Res<Windows>,
+) {
+    for &GeneratedNextRing(rings) in events.iter() {
+        set_scale(&mut query, &windows, rings);
+    }
+}
+
+fn change_camera_scale_from_resize(
+    mut query: Query<&mut Transform, With<MainCamera>>,
+    mut events: EventReader<WindowResized>,
+    windows: Res<Windows>,
+    map: Res<Map>,
+) {
+    for _ in events.iter() {
+        let rings = map.generated_rings;
+        set_scale(&mut query, &windows, rings);
+    }
 }
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(setup.system()).add_system_set(
-            SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(1. / 2.))
-                .with_system(fps_change_text.system())
-                .with_system(next_ring_change_text.system()),
-        );
+        app.add_startup_system(setup.system())
+            .add_system_set(
+                SystemSet::new()
+                    .with_run_criteria(FixedTimestep::steps_per_second(16.))
+                    .with_system(fps_change_text.system())
+                    .with_system(next_ring_change_text.system())
+                    .with_system(money_change_text.system())
+                    .with_system(daytime_change_text.system()),
+            )
+            .add_system(change_camera_scale.system())
+            .add_system(change_camera_scale_from_resize.system())
+            .add_system(change_money.system())
+            .add_system(keyboard_input.system())
+            .add_event::<ChangeMoneyEvent>()
+            .add_event::<UpgradeTileEvent>()
+            .add_event::<GeneratedNextRing>()
+            .init_resource::<Money>();
     }
 }

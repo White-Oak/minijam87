@@ -1,11 +1,14 @@
 mod ui;
 mod workers;
 mod field;
+mod daytime;
 
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, text::TextPlugin};
 use bevy_prototype_lyon::prelude::*;
+use daytime::DaytimePlugin;
 use field::FieldPlugin;
 use ui::UiPlugin;
+use workers::WorkerPlugin;
 
 
 fn main() {
@@ -18,6 +21,8 @@ fn main() {
         .add_plugin(FrameTimeDiagnosticsPlugin)
         .add_plugin(UiPlugin)
         .add_plugin(FieldPlugin)
+        .add_plugin(DaytimePlugin)
+        .add_plugin(WorkerPlugin)
         .run();
 }
 
